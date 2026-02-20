@@ -5,22 +5,60 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import heroBg from "@/assets/hero-bg.jpg";
 
 const AuthPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { signIn, signUp, user } = useAuth();
   const defaultTab = searchParams.get("tab") === "register" ? "register" : "login";
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Already logged in? Redirect via effect-like early render
+  if (user) {
+    navigate("/dashboard", { replace: true });
+    return null;
+  }
+
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    const fd = new FormData(e.currentTarget);
+    const { error } = await signIn(fd.get("email") as string, fd.get("password") as string);
+    setLoading(false);
+    if (error) {
+      toast.error("Identifiants incorrects. Vérifiez votre email et mot de passe.");
+    } else {
+      toast.success("Connexion réussie !");
       navigate("/dashboard");
-    }, 1200);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    const fd = new FormData(e.currentTarget);
+    const fullName = `${fd.get("firstName")} ${fd.get("lastName")}`.trim();
+    const email = fd.get("email") as string;
+    const password = fd.get("password") as string;
+
+    if (password.length < 8) {
+      toast.error("Le mot de passe doit contenir au moins 8 caractères.");
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await signUp(email, password, fullName);
+    setLoading(false);
+    if (error) {
+      toast.error(error.message || "Erreur lors de la création du compte.");
+    } else {
+      toast.success("Compte créé ! Vérifiez votre email pour confirmer votre inscription.", { duration: 6000 });
+      navigate("/dashboard");
+    }
   };
 
   return (
@@ -98,15 +136,15 @@ const AuthPage = () => {
                 <h2 className="text-2xl font-bold text-navy-900 mb-1">Bon retour 👋</h2>
                 <p className="text-muted-foreground text-sm">Connectez-vous à votre espace prestataire</p>
               </div>
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleLogin} className="space-y-5">
                 <div>
                   <Label htmlFor="email" className="text-navy-700 font-medium mb-1.5 block">Email</Label>
-                  <Input id="email" type="email" placeholder="vous@exemple.com" className="h-11 rounded-xl border-border" required />
+                  <Input id="email" name="email" type="email" placeholder="vous@exemple.com" className="h-11 rounded-xl border-border" required />
                 </div>
                 <div>
                   <Label htmlFor="password" className="text-navy-700 font-medium mb-1.5 block">Mot de passe</Label>
                   <div className="relative">
-                    <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" className="h-11 rounded-xl border-border pr-11" required />
+                    <Input id="password" name="password" type={showPassword ? "text" : "password"} placeholder="••••••••" className="h-11 rounded-xl border-border pr-11" required />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -129,29 +167,29 @@ const AuthPage = () => {
                 <h2 className="text-2xl font-bold text-navy-900 mb-1">Créer un compte</h2>
                 <p className="text-muted-foreground text-sm">Rejoignez les prestataires qui travaillent en confiance</p>
               </div>
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleRegister} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-navy-700 font-medium mb-1.5 block text-sm">Prénom</Label>
-                    <Input type="text" placeholder="Jean" className="h-11 rounded-xl border-border" required />
+                    <Input name="firstName" type="text" placeholder="Jean" className="h-11 rounded-xl border-border" required />
                   </div>
                   <div>
                     <Label className="text-navy-700 font-medium mb-1.5 block text-sm">Nom</Label>
-                    <Input type="text" placeholder="Dupont" className="h-11 rounded-xl border-border" required />
+                    <Input name="lastName" type="text" placeholder="Dupont" className="h-11 rounded-xl border-border" required />
                   </div>
                 </div>
                 <div>
                   <Label className="text-navy-700 font-medium mb-1.5 block text-sm">Email professionnel</Label>
-                  <Input type="email" placeholder="vous@exemple.com" className="h-11 rounded-xl border-border" required />
+                  <Input name="email" type="email" placeholder="vous@exemple.com" className="h-11 rounded-xl border-border" required />
                 </div>
                 <div>
                   <Label className="text-navy-700 font-medium mb-1.5 block text-sm">Téléphone</Label>
-                  <Input type="tel" placeholder="+225 00 00 00 00 00" className="h-11 rounded-xl border-border" />
+                  <Input name="phone" type="tel" placeholder="+225 00 00 00 00 00" className="h-11 rounded-xl border-border" />
                 </div>
                 <div>
                   <Label className="text-navy-700 font-medium mb-1.5 block text-sm">Mot de passe</Label>
                   <div className="relative">
-                    <Input type={showPassword ? "text" : "password"} placeholder="Min. 8 caractères" className="h-11 rounded-xl border-border pr-11" required />
+                    <Input name="password" type={showPassword ? "text" : "password"} placeholder="Min. 8 caractères" className="h-11 rounded-xl border-border pr-11" required minLength={8} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>

@@ -6,18 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const CreateDealPage = () => {
   const navigate = useNavigate();
+  const { user, subscription } = useAuth();
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [copied, setCopied] = useState(false);
-  const dealLink = "https://fidexapay.com/deal/fx-a7k2m9p1";
+  const [submitting, setSubmitting] = useState(false);
+  const [dealToken, setDealToken] = useState("");
 
   const [form, setForm] = useState({
     clientName: "",
     clientEmail: "",
     clientPhone: "",
+    title: "",
     serviceDescription: "",
     amount: "",
     currency: "XOF",
@@ -33,9 +39,45 @@ const CreateDealPage = () => {
     setForm((f) => ({ ...f, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const commissionRate = subscription?.commission_rate ?? 15;
+  const dealLink = dealToken ? `${window.location.origin}/deals/${dealToken}` : "";
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+    setSubmitting(true);
+
+    const { data, error } = await supabase
+      .from("deals")
+      .insert({
+        provider_id: user.id,
+        client_name: form.clientName,
+        client_email: form.clientEmail || null,
+        client_phone: form.clientPhone || null,
+        title: form.title || form.serviceDescription.slice(0, 80),
+        description: form.serviceDescription,
+        amount: parseFloat(form.amount),
+        currency: form.currency,
+        delivery_deadline: form.deliveryDeadline ? new Date(form.deliveryDeadline).toISOString() : null,
+        validation_deadline: form.deliveryDeadline && form.validationDeadline
+          ? new Date(new Date(form.deliveryDeadline).getTime() + parseInt(form.validationDeadline) * 3600000).toISOString()
+          : null,
+        custom_conditions: form.customConditions || null,
+        status: "pending_payment",
+      })
+      .select("secure_token")
+      .single();
+
+    setSubmitting(false);
+
+    if (error || !data) {
+      toast.error("Erreur lors de la création du deal: " + (error?.message || "Erreur inconnue"));
+      return;
+    }
+
+    setDealToken(data.secure_token);
     setSubmitted(true);
+    toast.success("Deal créé avec succès !");
   };
 
   const handleCopy = () => {
@@ -59,7 +101,7 @@ const CreateDealPage = () => {
           {/* Deal link */}
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 mb-6">
             <p className="text-emerald-800 text-xs font-semibold mb-2 uppercase tracking-wide">Lien sécurisé du deal</p>
-            <div className="flex items-center gap-2 bg-primary-foreground rounded-xl border border-emerald-200 p-3">
+            <div className="flex items-center gap-2 bg-white rounded-xl border border-emerald-200 p-3">
               <code className="text-emerald-700 text-sm flex-1 text-left truncate">{dealLink}</code>
               <button
                 onClick={handleCopy}
@@ -74,13 +116,16 @@ const CreateDealPage = () => {
             <Button onClick={() => navigate("/dashboard")} variant="outline" className="flex-1 rounded-xl">
               Retour au dashboard
             </Button>
-            <Button className="flex-1 gradient-emerald text-primary-foreground border-0 rounded-xl shadow-glow-emerald hover:opacity-90">
+            <Button
+              onClick={() => navigate(`/deals/${dealToken}`)}
+              className="flex-1 gradient-emerald text-primary-foreground border-0 rounded-xl shadow-glow-emerald hover:opacity-90"
+            >
               Voir le deal
             </Button>
           </div>
 
           <p className="text-muted-foreground text-xs mt-6">
-            Référence: <strong className="font-mono text-navy-700">FX-2025-007</strong>
+            Référence: <strong className="font-mono text-navy-700">{dealToken.slice(0, 12).toUpperCase()}</strong>
           </p>
         </div>
       </div>
@@ -125,6 +170,10 @@ const CreateDealPage = () => {
               <p className="text-muted-foreground mb-8">Le client recevra un lien sécurisé pour accéder au deal.</p>
               <div className="bg-card rounded-2xl border border-border p-6 space-y-5">
                 <div>
+                  <Label className="text-navy-700 font-medium mb-1.5 block">Titre du deal *</Label>
+                  <Input name="title" value={form.title} onChange={handleChange} placeholder="Ex: Développement site e-commerce" className="h-11 rounded-xl" required />
+                </div>
+                <div>
                   <Label className="text-navy-700 font-medium mb-1.5 block">Nom complet du client *</Label>
                   <Input name="clientName" value={form.clientName} onChange={handleChange} placeholder="Ex: Kofi Mensah" className="h-11 rounded-xl" required />
                 </div>
@@ -137,7 +186,7 @@ const CreateDealPage = () => {
                   <Input name="clientPhone" value={form.clientPhone} onChange={handleChange} type="tel" placeholder="+225 00 00 00 00 00" className="h-11 rounded-xl" />
                 </div>
               </div>
-              <Button type="button" onClick={() => setStep(2)} className="w-full mt-6 h-12 gradient-emerald text-primary-foreground border-0 rounded-xl font-semibold shadow-glow-emerald hover:opacity-90" disabled={!form.clientName || !form.clientEmail}>
+              <Button type="button" onClick={() => setStep(2)} className="w-full mt-6 h-12 gradient-emerald text-primary-foreground border-0 rounded-xl font-semibold shadow-glow-emerald hover:opacity-90" disabled={!form.clientName || !form.clientEmail || !form.title}>
                 Étape suivante <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
@@ -156,7 +205,7 @@ const CreateDealPage = () => {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2">
                     <Label className="text-navy-700 font-medium mb-1.5 block">Montant total *</Label>
-                    <Input name="amount" value={form.amount} onChange={handleChange} type="number" placeholder="500 000" className="h-11 rounded-xl" required />
+                    <Input name="amount" value={form.amount} onChange={handleChange} type="number" min="1" placeholder="500 000" className="h-11 rounded-xl" required />
                   </div>
                   <div>
                     <Label className="text-navy-700 font-medium mb-1.5 block">Devise</Label>
@@ -171,7 +220,7 @@ const CreateDealPage = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-navy-700 font-medium mb-1.5 block">Date de livraison *</Label>
-                    <Input name="deliveryDeadline" value={form.deliveryDeadline} onChange={handleChange} type="date" className="h-11 rounded-xl" required />
+                    <Input name="deliveryDeadline" value={form.deliveryDeadline} onChange={handleChange} type="date" className="h-11 rounded-xl" required min={new Date().toISOString().split("T")[0]} />
                   </div>
                   <div>
                     <Label className="text-navy-700 font-medium mb-1.5 block">Délai validation (h)</Label>
@@ -202,6 +251,10 @@ const CreateDealPage = () => {
 
               <div className="bg-card rounded-2xl border border-border p-6 space-y-4 mb-5">
                 <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-muted-foreground text-sm">Titre</span>
+                  <span className="font-semibold text-navy-900 text-sm">{form.title}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border">
                   <span className="text-muted-foreground text-sm">Client</span>
                   <span className="font-semibold text-navy-900 text-sm">{form.clientName}</span>
                 </div>
@@ -215,10 +268,10 @@ const CreateDealPage = () => {
                 </div>
                 <div className="flex justify-between py-2 border-b border-border">
                   <span className="text-muted-foreground text-sm">Livraison avant</span>
-                  <span className="font-medium text-navy-900 text-sm">{form.deliveryDeadline}</span>
+                  <span className="font-medium text-navy-900 text-sm">{new Date(form.deliveryDeadline).toLocaleDateString("fr-FR")}</span>
                 </div>
                 <div className="py-2">
-                  <span className="text-muted-foreground text-sm block mb-2">Service</span>
+                  <span className="text-muted-foreground text-sm block mb-2">Description</span>
                   <p className="text-navy-800 text-sm leading-relaxed">{form.serviceDescription}</p>
                 </div>
               </div>
@@ -227,8 +280,8 @@ const CreateDealPage = () => {
               <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
                 <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-amber-800 text-sm">
-                  Commission FidexaPay: <strong>9%</strong> soit{" "}
-                  <strong>{Math.round(parseInt(form.amount || "0") * 0.09).toLocaleString()} {form.currency}</strong>{" "}
+                  Commission FidexaPay: <strong>{commissionRate}%</strong> soit{" "}
+                  <strong>{Math.round(parseInt(form.amount || "0") * commissionRate / 100).toLocaleString()} {form.currency}</strong>{" "}
                   déduit lors de la libération des fonds.
                 </p>
               </div>
@@ -253,8 +306,12 @@ const CreateDealPage = () => {
                 <Button type="button" onClick={() => setStep(2)} variant="outline" className="flex-1 h-12 rounded-xl">
                   <ArrowLeft className="w-4 h-4 mr-2" /> Modifier
                 </Button>
-                <Button type="submit" className="flex-1 h-12 gradient-emerald text-primary-foreground border-0 rounded-xl font-bold shadow-glow-emerald hover:opacity-90" disabled={!form.agreeTerms || !form.agreeEscrow}>
-                  Créer le deal
+                <Button
+                  type="submit"
+                  className="flex-1 h-12 gradient-emerald text-primary-foreground border-0 rounded-xl font-bold shadow-glow-emerald hover:opacity-90"
+                  disabled={!form.agreeTerms || !form.agreeEscrow || submitting}
+                >
+                  {submitting ? "Création en cours..." : "Créer le deal"}
                 </Button>
               </div>
             </div>
