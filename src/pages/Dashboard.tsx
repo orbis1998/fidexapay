@@ -1,50 +1,45 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Shield, LayoutDashboard, FileText, CreditCard, Bell,
   Settings, LogOut, Plus, TrendingUp, DollarSign,
   Clock, CheckCircle, AlertTriangle, Eye, ChevronRight,
-  User, Menu, X
+  User, Menu
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 // ── Types ────────────────────────────────────────────────────
-type DealStatus = "pending" | "secured" | "progress" | "delivered" | "completed" | "dispute";
+type DealStatus = "pending_payment" | "funds_secured" | "in_progress" | "delivered" | "awaiting_validation" | "completed" | "dispute";
 
 interface Deal {
   id: string;
-  client: string;
-  service: string;
+  client_name: string;
+  title: string;
   amount: number;
   currency: string;
   status: DealStatus;
-  deadline: string;
-  createdAt: string;
+  delivery_deadline: string | null;
+  created_at: string;
+  secure_token: string;
 }
 
-// ── Mock data ─────────────────────────────────────────────────
-const MOCK_DEALS: Deal[] = [
-  { id: "FX-2024-001", client: "Kofi Mensah", service: "Développement site e-commerce", amount: 450000, currency: "XOF", status: "completed", deadline: "2024-12-15", createdAt: "2024-11-20" },
-  { id: "FX-2024-002", client: "Aminata Diallo", service: "Identité visuelle complète", amount: 280000, currency: "XOF", status: "progress", deadline: "2025-01-10", createdAt: "2024-12-01" },
-  { id: "FX-2024-003", client: "Pierre Lefebvre", service: "Consulting stratégie digitale", amount: 750000, currency: "XOF", status: "secured", deadline: "2025-01-20", createdAt: "2024-12-10" },
-  { id: "FX-2024-004", client: "Fatou Ndiaye", service: "Campagne réseaux sociaux", amount: 180000, currency: "XOF", status: "delivered", deadline: "2024-12-28", createdAt: "2024-11-30" },
-  { id: "FX-2024-005", client: "David Chen", service: "Application mobile MVP", amount: 1200000, currency: "XOF", status: "dispute", deadline: "2025-01-05", createdAt: "2024-11-15" },
-  { id: "FX-2024-006", client: "Marie Traoré", service: "Formation équipe marketing", amount: 320000, currency: "XOF", status: "pending", deadline: "2025-02-01", createdAt: "2024-12-18" },
-];
-
 // ── Status config ─────────────────────────────────────────────
-const STATUS_CONFIG: Record<DealStatus, { label: string; className: string; icon: any }> = {
-  pending: { label: "Paiement en attente", className: "status-pending", icon: Clock },
-  secured: { label: "Fonds sécurisés", className: "status-secured", icon: Shield },
-  progress: { label: "En cours", className: "status-progress", icon: TrendingUp },
+const STATUS_CONFIG: Record<DealStatus, { label: string; className: string; icon: React.ElementType }> = {
+  pending_payment: { label: "Paiement en attente", className: "status-pending", icon: Clock },
+  funds_secured: { label: "Fonds sécurisés", className: "status-secured", icon: Shield },
+  in_progress: { label: "En cours", className: "status-progress", icon: TrendingUp },
   delivered: { label: "Livré", className: "status-delivered", icon: CheckCircle },
+  awaiting_validation: { label: "En validation", className: "status-delivered", icon: Clock },
   completed: { label: "Terminé", className: "status-completed", icon: CheckCircle },
   dispute: { label: "Litige", className: "status-dispute", icon: AlertTriangle },
 };
 
 // ── Sidebar Nav Item ──────────────────────────────────────────
-const NavItem = ({ icon: Icon, label, active, onClick }: { icon: any; label: string; active?: boolean; onClick?: () => void }) => (
+const NavItem = ({ icon: Icon, label, active, onClick }: { icon: React.ElementType; label: string; active?: boolean; onClick?: () => void }) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
@@ -60,7 +55,7 @@ const NavItem = ({ icon: Icon, label, active, onClick }: { icon: any; label: str
 
 // ── Metric card ───────────────────────────────────────────────
 const MetricCard = ({ label, value, change, icon: Icon, color }: {
-  label: string; value: string; change: string; icon: any; color: string;
+  label: string; value: string; change: string; icon: React.ElementType; color: string;
 }) => (
   <div className="bg-card rounded-2xl p-6 border border-border shadow-sm card-hover">
     <div className="flex items-start justify-between mb-4">
@@ -76,19 +71,52 @@ const MetricCard = ({ label, value, change, icon: Icon, color }: {
 
 // ════════════════════════════════════════════════════════════
 const ProviderDashboard = () => {
+  const { user, profile, subscription, signOut } = useAuth();
   const [activeSection, setActiveSection] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [loadingDeals, setLoadingDeals] = useState(true);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!user) return;
+    const fetchDeals = async () => {
+      setLoadingDeals(true);
+      const { data, error } = await supabase
+        .from("deals")
+        .select("id, client_name, title, amount, currency, status, delivery_deadline, created_at, secure_token")
+        .eq("provider_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        toast.error("Erreur lors du chargement des deals.");
+      } else {
+        setDeals((data || []) as Deal[]);
+      }
+      setLoadingDeals(false);
+    };
+    fetchDeals();
+  }, [user]);
+
   const filteredDeals = filterStatus === "all"
-    ? MOCK_DEALS
-    : MOCK_DEALS.filter((d) => d.status === filterStatus);
+    ? deals
+    : deals.filter((d) => d.status === filterStatus);
 
-  const totalRevenue = MOCK_DEALS.filter(d => d.status === "completed").reduce((s, d) => s + d.amount, 0);
-  const secured = MOCK_DEALS.filter(d => d.status === "secured").reduce((s, d) => s + d.amount, 0);
+  const totalRevenue = deals.filter(d => d.status === "completed").reduce((s, d) => s + d.amount, 0);
+  const securedAmount = deals.filter(d => d.status === "funds_secured").reduce((s, d) => s + d.amount, 0);
+  const activeDealsCount = deals.filter(d => !["completed", "dispute"].includes(d.status)).length;
 
-  const fmtAmount = (n: number) => `${(n / 1000).toFixed(0)}k XOF`;
+  const fmtAmount = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(0)}k XOF` : `${n} XOF`;
+
+  const planLabel: Record<string, string> = {
+    basic: "Basic", essentiel: "Essentiel", standard: "Standard", premium: "Premium"
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -111,14 +139,17 @@ const ProviderDashboard = () => {
       <div className="px-2 pt-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3 px-4 py-3 mb-2">
           <div className="w-8 h-8 rounded-full gradient-emerald flex items-center justify-center">
-            <User className="w-4 h-4 text-primary-foreground" />
+            {profile?.avatar_url
+              ? <img src={profile.avatar_url} className="w-full h-full rounded-full object-cover" alt="avatar" />
+              : <User className="w-4 h-4 text-primary-foreground" />
+            }
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-primary-foreground text-sm font-medium truncate">Jean Dupont</p>
-            <p className="text-navy-400 text-xs truncate">Plan Essentiel</p>
+            <p className="text-primary-foreground text-sm font-medium truncate">{profile?.full_name || user?.email}</p>
+            <p className="text-navy-400 text-xs truncate">Plan {planLabel[subscription?.plan || "basic"]}</p>
           </div>
         </div>
-        <NavItem icon={LogOut} label="Déconnexion" onClick={() => navigate("/")} />
+        <NavItem icon={LogOut} label="Déconnexion" onClick={handleSignOut} />
       </div>
     </div>
   );
@@ -157,7 +188,6 @@ const ProviderDashboard = () => {
           <div className="ml-auto flex items-center gap-3">
             <button className="relative p-2 rounded-xl hover:bg-muted">
               <Bell className="w-5 h-5 text-navy-700" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
             </button>
             <Link to="/deals/new">
               <Button className="gradient-emerald text-primary-foreground border-0 rounded-xl text-sm font-semibold shadow-glow-emerald hover:opacity-90">
@@ -172,21 +202,27 @@ const ProviderDashboard = () => {
           {/* OVERVIEW */}
           {activeSection === "overview" && (
             <div className="space-y-6">
-              {/* Metrics */}
               <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                <MetricCard label="Chiffre d'affaires total" value={fmtAmount(totalRevenue)} change="+18%" icon={DollarSign} color="bg-emerald-100 text-emerald-700" />
-                <MetricCard label="Deals actifs" value="3" change="+2 ce mois" icon={FileText} color="bg-blue-100 text-blue-700" />
-                <MetricCard label="Fonds en escrow" value={fmtAmount(secured)} change="En cours" icon={Shield} color="bg-amber-100 text-amber-700" />
-                <MetricCard label="Taux de completion" value="92%" change="+5%" icon={TrendingUp} color="bg-purple-100 text-purple-700" />
+                <MetricCard label="Chiffre d'affaires total" value={fmtAmount(totalRevenue)} change="Terminés" icon={DollarSign} color="bg-emerald-100 text-emerald-700" />
+                <MetricCard label="Deals actifs" value={String(activeDealsCount)} change="En cours" icon={FileText} color="bg-blue-100 text-blue-700" />
+                <MetricCard label="Fonds en escrow" value={fmtAmount(securedAmount)} change="Sécurisés" icon={Shield} color="bg-amber-100 text-amber-700" />
+                <MetricCard label="Total deals" value={String(deals.length)} change="Tous statuts" icon={TrendingUp} color="bg-purple-100 text-purple-700" />
               </div>
 
               {/* Plan banner */}
               <div className="glass-card-dark rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <div className="flex-1">
-                  <p className="text-primary-foreground font-semibold mb-1">Plan Essentiel — 9% de commission</p>
-                  <p className="text-navy-300 text-sm">7/10 deals actifs utilisés ce mois</p>
+                  <p className="text-primary-foreground font-semibold mb-1">
+                    Plan {planLabel[subscription?.plan || "basic"]} — {subscription?.commission_rate ?? 15}% de commission
+                  </p>
+                  <p className="text-navy-300 text-sm">
+                    {activeDealsCount}/{subscription?.max_active_deals ?? 3} deals actifs utilisés
+                  </p>
                   <div className="mt-3 bg-navy-700 rounded-full h-2">
-                    <div className="gradient-emerald h-2 rounded-full" style={{ width: "70%" }} />
+                    <div
+                      className="gradient-emerald h-2 rounded-full transition-all"
+                      style={{ width: `${Math.min(100, (activeDealsCount / (subscription?.max_active_deals ?? 3)) * 100)}%` }}
+                    />
                   </div>
                 </div>
                 <Button variant="outline" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-sm" onClick={() => setActiveSection("subscription")}>
@@ -202,32 +238,52 @@ const ProviderDashboard = () => {
                     Voir tous
                   </button>
                 </div>
-                <div className="space-y-3">
-                  {MOCK_DEALS.slice(0, 4).map((deal) => {
-                    const s = STATUS_CONFIG[deal.status];
-                    const Icon = s.icon;
-                    return (
-                      <div key={deal.id} className="bg-card rounded-xl border border-border p-4 flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(`/deals/${deal.id}`)}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold text-navy-900 text-sm truncate">{deal.client}</p>
-                            <span className="text-navy-400 text-xs font-mono">#{deal.id}</span>
+                {loadingDeals ? (
+                  <div className="space-y-3">
+                    {[1,2,3].map(i => <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />)}
+                  </div>
+                ) : deals.length === 0 ? (
+                  <div className="bg-card rounded-2xl border border-border p-12 text-center">
+                    <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="font-semibold text-navy-900 mb-1">Aucun deal pour l'instant</p>
+                    <p className="text-muted-foreground text-sm mb-4">Créez votre premier deal sécurisé.</p>
+                    <Link to="/deals/new">
+                      <Button className="gradient-emerald text-primary-foreground border-0 rounded-xl shadow-glow-emerald hover:opacity-90">
+                        <Plus className="w-4 h-4 mr-2" /> Créer un deal
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {deals.slice(0, 4).map((deal) => {
+                      const s = STATUS_CONFIG[deal.status];
+                      const Icon = s.icon;
+                      return (
+                        <div
+                          key={deal.id}
+                          className="bg-card rounded-xl border border-border p-4 flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
+                          onClick={() => navigate(`/deals/${deal.secure_token}`)}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-semibold text-navy-900 text-sm truncate">{deal.client_name}</p>
+                            </div>
+                            <p className="text-muted-foreground text-xs truncate">{deal.title}</p>
                           </div>
-                          <p className="text-muted-foreground text-xs truncate">{deal.service}</p>
+                          <div className="hidden sm:block text-right flex-shrink-0">
+                            <p className="font-bold text-navy-900 text-sm">{deal.amount.toLocaleString()} {deal.currency}</p>
+                            <p className="text-muted-foreground text-xs">{deal.delivery_deadline ? new Date(deal.delivery_deadline).toLocaleDateString("fr-FR") : "—"}</p>
+                          </div>
+                          <span className={`flex-shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${s.className}`}>
+                            <Icon className="w-3 h-3" />
+                            {s.label}
+                          </span>
+                          <Eye className="w-4 h-4 text-navy-400 flex-shrink-0 hidden sm:block" />
                         </div>
-                        <div className="hidden sm:block text-right flex-shrink-0">
-                          <p className="font-bold text-navy-900 text-sm">{deal.amount.toLocaleString()} XOF</p>
-                          <p className="text-muted-foreground text-xs">{deal.deadline}</p>
-                        </div>
-                        <span className={`flex-shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ${s.className}`}>
-                          <Icon className="w-3 h-3" />
-                          {s.label}
-                        </span>
-                        <Eye className="w-4 h-4 text-navy-400 flex-shrink-0 hidden sm:block" />
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -235,9 +291,15 @@ const ProviderDashboard = () => {
           {/* DEALS LIST */}
           {activeSection === "deals" && (
             <div className="space-y-4">
-              {/* Filter tabs */}
               <div className="flex flex-wrap gap-2">
-                {[["all", "Tous"], ["pending", "En attente"], ["secured", "Sécurisés"], ["progress", "En cours"], ["completed", "Terminés"], ["dispute", "Litiges"]].map(([val, label]) => (
+                {[
+                  ["all", "Tous"],
+                  ["pending_payment", "En attente"],
+                  ["funds_secured", "Sécurisés"],
+                  ["in_progress", "En cours"],
+                  ["completed", "Terminés"],
+                  ["dispute", "Litiges"],
+                ].map(([val, label]) => (
                   <button
                     key={val}
                     onClick={() => setFilterStatus(val)}
@@ -252,50 +314,63 @@ const ProviderDashboard = () => {
                 ))}
               </div>
 
-              {/* Deals table */}
-              <div className="bg-card rounded-2xl border border-border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/50">
-                        <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Référence</th>
-                        <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</th>
-                        <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Service</th>
-                        <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Montant</th>
-                        <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statut</th>
-                        <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">Échéance</th>
-                        <th className="p-4" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {filteredDeals.map((deal) => {
-                        const s = STATUS_CONFIG[deal.status];
-                        const Icon = s.icon;
-                        return (
-                          <tr key={deal.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate(`/deals/${deal.id}`)}>
-                            <td className="p-4 text-xs font-mono text-navy-500">{deal.id}</td>
-                            <td className="p-4 font-medium text-navy-900 text-sm">{deal.client}</td>
-                            <td className="p-4 text-muted-foreground text-sm hidden md:table-cell max-w-[200px] truncate">{deal.service}</td>
-                            <td className="p-4 font-bold text-navy-900 text-sm whitespace-nowrap">{deal.amount.toLocaleString()} XOF</td>
-                            <td className="p-4">
-                              <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full w-fit ${s.className}`}>
-                                <Icon className="w-3 h-3" />
-                                {s.label}
-                              </span>
-                            </td>
-                            <td className="p-4 text-muted-foreground text-sm hidden lg:table-cell">{deal.deadline}</td>
-                            <td className="p-4">
-                              <button className="p-1.5 rounded-lg hover:bg-muted">
-                                <Eye className="w-4 h-4 text-navy-400" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              {loadingDeals ? (
+                <div className="space-y-3">
+                  {[1,2,3,4].map(i => <div key={i} className="h-14 bg-muted rounded-xl animate-pulse" />)}
                 </div>
-              </div>
+              ) : filteredDeals.length === 0 ? (
+                <div className="bg-card rounded-2xl border border-border p-12 text-center">
+                  <p className="text-muted-foreground">Aucun deal dans cette catégorie.</p>
+                </div>
+              ) : (
+                <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/50">
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Service</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Montant</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Statut</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">Échéance</th>
+                          <th className="p-4" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {filteredDeals.map((deal) => {
+                          const s = STATUS_CONFIG[deal.status];
+                          const Icon = s.icon;
+                          return (
+                            <tr
+                              key={deal.id}
+                              className="hover:bg-muted/30 transition-colors cursor-pointer"
+                              onClick={() => navigate(`/deals/${deal.secure_token}`)}
+                            >
+                              <td className="p-4 font-medium text-navy-900 text-sm">{deal.client_name}</td>
+                              <td className="p-4 text-muted-foreground text-sm hidden md:table-cell max-w-[200px] truncate">{deal.title}</td>
+                              <td className="p-4 font-bold text-navy-900 text-sm whitespace-nowrap">{deal.amount.toLocaleString()} {deal.currency}</td>
+                              <td className="p-4">
+                                <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full w-fit ${s.className}`}>
+                                  <Icon className="w-3 h-3" />
+                                  {s.label}
+                                </span>
+                              </td>
+                              <td className="p-4 text-muted-foreground text-sm hidden lg:table-cell">
+                                {deal.delivery_deadline ? new Date(deal.delivery_deadline).toLocaleDateString("fr-FR") : "—"}
+                              </td>
+                              <td className="p-4">
+                                <button className="p-1.5 rounded-lg hover:bg-muted">
+                                  <Eye className="w-4 h-4 text-navy-400" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -305,31 +380,37 @@ const ProviderDashboard = () => {
               <p className="text-muted-foreground mb-8">Choisissez le plan adapté à votre activité.</p>
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { name: "Basic", price: "Gratuit", commission: "15%", deals: "3 deals", features: ["Lien deal sécurisé", "Support email"], current: false, popular: false },
-                  { name: "Essentiel", price: "9 900 XOF/mois", commission: "9%", deals: "10 deals", features: ["Tout Basic", "Notifications SMS", "Tableau de bord"], current: true, popular: false },
-                  { name: "Standard", price: "19 900 XOF/mois", commission: "6%", deals: "25 deals", features: ["Tout Essentiel", "API Access", "Support prioritaire"], current: false, popular: true },
-                  { name: "Premium", price: "27 900 XOF/mois", commission: "5%", deals: "Illimité", features: ["Tout Standard", "Manager dédié", "SLA garanti"], current: false, popular: false },
-                ].map((plan) => (
-                  <div key={plan.name} className={`rounded-2xl border p-6 relative ${plan.popular ? "border-emerald-400 bg-emerald-50" : "border-border bg-card"} ${plan.current ? "ring-2 ring-emerald-400 ring-offset-2" : ""}`}>
-                    {plan.popular && <span className="absolute -top-3 left-1/2 -translate-x-1/2 gradient-emerald text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">Populaire</span>}
-                    {plan.current && <span className="absolute -top-3 right-4 bg-navy-900 text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">Actuel</span>}
-                    <h3 className="font-bold text-navy-900 text-lg mb-1">{plan.name}</h3>
-                    <p className="text-2xl font-bold text-navy-900 mb-1">{plan.price}</p>
-                    <div className="text-emerald-600 font-semibold text-sm mb-1">{plan.commission} commission</div>
-                    <div className="text-muted-foreground text-sm mb-4">{plan.deals} actifs</div>
-                    <ul className="space-y-2 mb-6">
-                      {plan.features.map(f => (
-                        <li key={f} className="flex items-center gap-2 text-sm text-navy-700">
-                          <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button className={`w-full rounded-xl text-sm ${plan.current ? "bg-muted text-muted-foreground" : "gradient-emerald text-primary-foreground border-0 hover:opacity-90"}`} disabled={plan.current}>
-                      {plan.current ? "Plan actuel" : "Choisir"}
-                    </Button>
-                  </div>
-                ))}
+                  { key: "basic", name: "Basic", price: "Gratuit", commission: "15%", deals: "3 deals", features: ["Lien deal sécurisé", "Support email"] },
+                  { key: "essentiel", name: "Essentiel", price: "9 900 XOF/mois", commission: "9%", deals: "10 deals", features: ["Tout Basic", "Notifications SMS", "Tableau de bord"], popular: false },
+                  { key: "standard", name: "Standard", price: "19 900 XOF/mois", commission: "6%", deals: "25 deals", features: ["Tout Essentiel", "API Access", "Support prioritaire"], popular: true },
+                  { key: "premium", name: "Premium", price: "27 900 XOF/mois", commission: "5%", deals: "Illimité", features: ["Tout Standard", "Manager dédié", "SLA garanti"] },
+                ].map((plan) => {
+                  const isCurrent = subscription?.plan === plan.key;
+                  return (
+                    <div key={plan.name} className={`rounded-2xl border p-6 relative ${plan.popular ? "border-emerald-400 bg-emerald-50" : "border-border bg-card"} ${isCurrent ? "ring-2 ring-emerald-400 ring-offset-2" : ""}`}>
+                      {plan.popular && <span className="absolute -top-3 left-1/2 -translate-x-1/2 gradient-emerald text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">Populaire</span>}
+                      {isCurrent && <span className="absolute -top-3 right-4 bg-navy-900 text-primary-foreground text-xs font-bold px-3 py-1 rounded-full">Actuel</span>}
+                      <h3 className="font-bold text-navy-900 text-lg mb-1">{plan.name}</h3>
+                      <p className="text-2xl font-bold text-navy-900 mb-1">{plan.price}</p>
+                      <div className="text-emerald-600 font-semibold text-sm mb-1">{plan.commission} commission</div>
+                      <div className="text-muted-foreground text-sm mb-4">{plan.deals} actifs</div>
+                      <ul className="space-y-2 mb-6">
+                        {plan.features.map(f => (
+                          <li key={f} className="flex items-center gap-2 text-sm text-navy-700">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                      <Button
+                        className={`w-full rounded-xl text-sm ${isCurrent ? "bg-muted text-muted-foreground" : "gradient-emerald text-primary-foreground border-0 hover:opacity-90"}`}
+                        disabled={isCurrent}
+                      >
+                        {isCurrent ? "Plan actuel" : "Choisir"}
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -343,7 +424,7 @@ const ProviderDashboard = () => {
               <h3 className="font-bold text-navy-900 text-xl mb-2">
                 {activeSection === "notifications" ? "Notifications" : "Paramètres"}
               </h3>
-              <p className="text-muted-foreground">Cette section sera disponible après la connexion Lovable Cloud.</p>
+              <p className="text-muted-foreground">Bientôt disponible.</p>
             </div>
           )}
         </div>
