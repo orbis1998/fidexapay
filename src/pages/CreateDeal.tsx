@@ -71,13 +71,13 @@ const CreateDealPage = () => {
     setSubmitting(false);
 
     if (error || !data) {
-      toast.error("Erreur lors de la création du deal: " + (error?.message || "Erreur inconnue"));
+      toast.error("Erreur lors de la création du lien: " + (error?.message || "Erreur inconnue"));
       return;
     }
 
     setDealToken(data.secure_token);
     setSubmitted(true);
-    toast.success("Deal créé avec succès !");
+    toast.success("Lien créé avec succès !");
   };
 
   const handleCopy = () => {
@@ -93,14 +93,14 @@ const CreateDealPage = () => {
           <div className="w-20 h-20 rounded-full gradient-emerald flex items-center justify-center mx-auto mb-6 shadow-glow-emerald animate-pulse-slow">
             <CheckCircle className="w-10 h-10 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold text-navy-900 mb-3">Deal créé avec succès !</h1>
+          <h1 className="text-3xl font-bold text-navy-900 mb-3">Lien créé avec succès !</h1>
           <p className="text-muted-foreground mb-8">
             Envoyez ce lien sécurisé à votre client pour qu'il effectue le paiement en escrow.
           </p>
 
           {/* Deal link */}
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 mb-6">
-            <p className="text-emerald-800 text-xs font-semibold mb-2 uppercase tracking-wide">Lien sécurisé du deal</p>
+            <p className="text-emerald-800 text-xs font-semibold mb-2 uppercase tracking-wide">Lien sécurisé</p>
             <div className="flex items-center gap-2 bg-white rounded-xl border border-emerald-200 p-3">
               <code className="text-emerald-700 text-sm flex-1 text-left truncate">{dealLink}</code>
               <button
@@ -120,7 +120,7 @@ const CreateDealPage = () => {
               onClick={() => navigate(`/deals/${dealToken}`)}
               className="flex-1 gradient-emerald text-primary-foreground border-0 rounded-xl shadow-glow-emerald hover:opacity-90"
             >
-              Voir le deal
+              Voir le lien
             </Button>
           </div>
 
@@ -144,7 +144,7 @@ const CreateDealPage = () => {
             <div className="w-7 h-7 rounded-lg gradient-emerald flex items-center justify-center">
               <Shield className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
-            <span className="font-bold text-navy-900">Nouveau deal</span>
+            <span className="font-bold text-navy-900">Créer un lien</span>
           </div>
 
           {/* Step indicator */}
@@ -167,10 +167,10 @@ const CreateDealPage = () => {
           {step === 1 && (
             <div className="animate-fade-up">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Informations du client</h2>
-              <p className="text-muted-foreground mb-8">Le client recevra un lien sécurisé pour accéder au deal.</p>
+              <p className="text-muted-foreground mb-8">Le client recevra un lien sécurisé pour accéder à la transaction.</p>
               <div className="bg-card rounded-2xl border border-border p-6 space-y-5">
                 <div>
-                  <Label className="text-navy-700 font-medium mb-1.5 block">Titre du deal *</Label>
+                  <Label className="text-navy-700 font-medium mb-1.5 block">Titre du lien *</Label>
                   <Input name="title" value={form.title} onChange={handleChange} placeholder="Ex: Développement site e-commerce" className="h-11 rounded-xl" required />
                 </div>
                 <div>
@@ -247,7 +247,7 @@ const CreateDealPage = () => {
           {step === 3 && (
             <div className="animate-fade-up">
               <h2 className="text-2xl font-bold text-navy-900 mb-2">Récapitulatif & Confirmation</h2>
-              <p className="text-muted-foreground mb-8">Vérifiez les informations avant de créer le deal.</p>
+              <p className="text-muted-foreground mb-8">Vérifiez les informations avant de créer le lien.</p>
 
               <div className="bg-card rounded-2xl border border-border p-6 space-y-4 mb-5">
                 <div className="flex justify-between py-2 border-b border-border">
@@ -311,7 +311,7 @@ const CreateDealPage = () => {
                   className="flex-1 h-12 gradient-emerald text-primary-foreground border-0 rounded-xl font-bold shadow-glow-emerald hover:opacity-90"
                   disabled={!form.agreeTerms || !form.agreeEscrow || submitting}
                 >
-                  {submitting ? "Création en cours..." : "Créer le deal"}
+                  {submitting ? "Création en cours..." : "Créer le lien"}
                 </Button>
               </div>
             </div>
